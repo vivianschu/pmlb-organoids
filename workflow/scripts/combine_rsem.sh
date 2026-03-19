@@ -58,12 +58,22 @@ done
 
 paste "$OUTPUT_DIR/gene_ids.tmp" "$OUTPUT_DIR"/*_counts.tmp > "$OUTPUT_DIR/combined_expected_counts.txt"
 
+# Create effective length matrix (useful for TPM recomputation from corrected counts)
+echo "Creating effective length matrix..."
+for file in "${RSEM_FILES[@]}"; do
+    sample=$(basename "$file" "_rsem.genes.results")
+    cut -f4 "$file" | sed "1s/effective_length/$sample/" > "$OUTPUT_DIR/${sample}_efflen.tmp"
+done
+
+paste "$OUTPUT_DIR/gene_ids.tmp" "$OUTPUT_DIR"/*_efflen.tmp > "$OUTPUT_DIR/combined_effective_length.txt"
+
 # Cleanup temp files
 rm -f "$OUTPUT_DIR"/*.tmp
 
 echo "Done! Output files:"
 echo "  - $OUTPUT_DIR/combined_TPM.txt"
 echo "  - $OUTPUT_DIR/combined_expected_counts.txt"
+echo "  - $OUTPUT_DIR/combined_effective_length.txt"
 
 # Show preview
 echo ""
