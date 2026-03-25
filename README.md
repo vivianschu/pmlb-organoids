@@ -51,33 +51,44 @@ JOB1=$(sbatch --array=0-231 process_pt1_align.sh | awk '{print $4}')
 sbatch --dependency=afterok:$JOB1 --array=0-231 process_pt2_quant.sh
 ```
 
-### 5. Build expression matrices
+### 5. Build STAR count matrix
 
-Aggregates RSEM output into gene x sample matrices.
-
-```bash
-bash combine_rsem.sh
-```
-
-Outputs:
-- `combined_TPM.txt` — TPM values (recomputed from expected counts and effective length)
-- `combined_expected_counts.txt` — use as input for DESeq2/edgeR
-
-### 6. Gene detection QC
+Combines per-sample `ReadsPerGene.out.tab` files into a single gene × sample integer count matrix, selecting the correct strand column per sample based on the strandedness inferred during alignment.
 
 ```bash
-bash combine_gene_counts.sh
+bash combine_star_counts.sh
 ```
 
-Output: `gene_detection_stats.tsv` — per-sample count of genes detected at TPM > 0, 0.1, 1, and 10.
+Output: `combined_star_counts.txt` — rows are ENSG gene IDs, columns are samples, values are integer read counts.
 
-### 7. Alignment QC
+### 6. Alignment QC
 
 ```bash
 bash combine_star.sh
 ```
 
-Aggregates STAR alignment statistics across samples.
+Aggregates STAR alignment statistics across samples into `STAR_mapping_stats.tsv`.
+
+### 7. Batch correction & TPM
+
+Applied in `workflow/analysis/temp_02_batch_correction.ipynb`. See `workflow/analysis/README_batchcorr.txt` for full details.
+
+Samples were first filtered for QC: uniquely mapped % and library size were each compared against the cohort median, and samples falling more than 3 MADs from the median were removed (40 dropped, 192 retained). Genes were then filtered to those with raw count > 10 in at least 5 samples.
+
+Batch correction was performed using ComBat-seq (`inmoose.pycombat`), which models count data with a negative binomial distribution and returns adjusted integer counts. `cancer_type` was included as a biological covariate to prevent over-correction of biological signal. The correction was run independently on two gene sets: all expressed genes (30,552) and protein-coding genes only (17,273), identified from GENCODE v25. Samples belonging to singleton batches were excluded from the model and re-appended uncorrected.
+
+TPM was computed from the protein-coding batch-corrected counts using the longest annotated CDS per gene from the GENCODE v25 GTF (rather than RSEM per-sample effective lengths, which vary across samples). For each gene *g* and sample *s*:
+
+```
+RPK(g, s)  = corrected_count(g, s) / (longest_CDS(g) / 1000)
+TPM(g, s)  = RPK(g, s) / Σ_g RPK(g, s) × 1,000,000
+```
+
+Outputs (`results/`):
+- `batch_corrected_counts_all_genes.csv` — adjusted integer counts, 30,552 expressed genes × 192 samples
+- `batch_corrected_counts_protein_coding.csv` — adjusted integer counts, 17,273 protein-coding genes × 192 samples
+- `batch_corrected_TPM_protein_coding.csv` — TPM from protein-coding batch-corrected counts using longest CDS, 17,273 genes × 192 samples
+- `batch_corrected_TPM_all_genes.csv` — TPM from all-genes batch-corrected counts using longest CDS; genes lacking any CDS annotation in GENCODE v25 (lncRNAs, pseudogenes, etc.) are excluded
 
 ---
 
